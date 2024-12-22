@@ -139,6 +139,39 @@ jobs:
           command: |
             ANSIBLE_HOST_KEY_CHECKING=false ansible-playbook ansible/playbook.yml -u ec2-user -i ansible/inventory -e "RDS_PASSWORD=$RDS_PASSWORD" --private-key /home/circleci/AWS-access/lecture13.pem
 
+  execute-serverspec:
+    docker:
+      - image: cimg/ruby:3.2.3        
+    steps:
+      - checkout
+      - attach_workspace:  # 最初に.env_varに設定した変数を使いたいので内容を引き継ぐ
+          at: .
+      - add_ssh_keys: 
+          fingerprints:
+             - "SHA256:KOyzFQxvG/olTvvKdqUsZfKalbDceS8lMYyiTxHgy2Q"
+      - run: ruby --version
+      - run:
+          name: serverspec setup 
+          command: |
+            cd server-spec-sample
+            bundle install
+
+      - run: 
+          name: crate ~/.ssh/config targat config
+          command: |
+            set -x
+            source .env_var
+            mkdir -p ~/.ssh
+            echo "Host target" >> ~/.ssh/config
+            echo "HostName ${EC2PublicIP}" >> ~/.ssh/config
+            echo "User ec2-user" >> ~/.ssh/config
+
+      - run:
+          name: execution for serverspec the test
+          command: |
+            cd server-spec-sample/spec
+            rake spec
+
 workflows:
   raisetech:
     jobs:
@@ -147,3 +180,6 @@ workflows:
       - execute-ansible:
           requires:
             - execute-cloudformation
+      - execute-serverspec:
+          requires:
+            - execute-ansible
