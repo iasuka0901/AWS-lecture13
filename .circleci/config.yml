@@ -1,8 +1,8 @@
 # ----------------------------------------------------------
 # version: 2.1: CircleCIの設定ファイルのバージョンを指定
-# aws-cli: AWS CLI関連の操作を簡単にするためのOrb。
-# aws-cloudformation: CloudFormationを簡単に扱うためのOrb。
-# ansible-playbook: Ansibleプレイブックを簡単に実行するためのOrb。
+# aws-cli: AWS CLI関連の操作を簡単にするためのOrb
+# aws-cloudformation: CloudFormationを簡単に扱うためのOrb
+# ansible-playbook: Ansibleプレイブックを簡単に実行するためのOrb
 # ----------------------------------------------------------
 version: 2.1
 orbs:
