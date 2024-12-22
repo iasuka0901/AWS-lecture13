@@ -120,8 +120,6 @@ Resources:
       Path: /
       Roles:
         - !Ref EC2Role
-    
-     
       
   #ロードバランサー
   TestALB:
