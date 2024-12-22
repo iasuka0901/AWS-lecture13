@@ -103,7 +103,7 @@ jobs:
           command: python -m pip install --force-reinstall --upgrade pip
       - add_ssh_keys:
           fingerprints:
-          - "SHA256:5IfPkhEeUMhJcsmiPYZHeDKL4G5LmwYz6MAx+2wACX0"
+          - "SHA256:KOyzFQxvG/olTvvKdqUsZfKalbDceS8lMYyiTxHgy2Q"
       - run: 
           name: install ansible
           command: pip install ansible==2.10.7
@@ -137,7 +137,7 @@ jobs:
           name: Run Ansible Playbook with increased timeout
           no_output_timeout: 60m  
           command: |
-            ANSIBLE_HOST_KEY_CHECKING=false ansible-playbook ansible/playbook.yml -u ec2-user -i ansible/inventory -e "RDS_PASSWORD=$RDS_PASSWORD" --private-key ~/AWS-access/AWS-Ansible-lecture13.pem
+            ansible-playbook ansible/playbook.yml -u ec2-user -i ansible/inventory -e "RDS_PASSWORD=$RDS_PASSWORD" --private-key ~/AWS-access/lecture13.pem
 
 workflows:
   raisetech:
