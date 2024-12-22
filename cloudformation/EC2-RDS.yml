@@ -1,0 +1,263 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Create EC2 and RDS 
+Parameters: 
+  NameBase:
+    Description: this is base name.
+    Type: String
+    Default:  RaiseTech
+  OS:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: "/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2"
+
+Resources: 
+  #ec2のセキュリティーグループ
+  CfEc2TestSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: CfEc2TestSecurityGroup
+      GroupDescription: CfTestSecurityGroup
+      VpcId: 
+        !ImportValue VPC1
+      Tags:
+        - Key: Name
+          Value: CfEc2TestSecurityGroup
+  #許可ルール
+  TsetSecurityGroupIgress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: tcp
+      FromPort: 22
+      ToPort: 22
+      GroupId: !Ref CfEc2TestSecurityGroup
+      CidrIp: 0.0.0.0/0
+  EC2SGIngressHttp:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref CfEc2TestSecurityGroup
+      IpProtocol: tcp
+      FromPort: 80
+      ToPort: 80
+      CidrIp: 0.0.0.0/0
+    
+
+  #rdsのセキュリティーグループ
+  CfRDSTestSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: CfRDSTestSecurityGroup
+      GroupDescription: CfRDSTestSecurityGroup
+      VpcId: 
+        !ImportValue VPC1
+      Tags:
+        - Key: Name
+          Value: CfRDSTestSecurityGroup
+  #許可ルール
+  RDSSGIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref CfRDSTestSecurityGroup
+      IpProtocol: tcp
+      FromPort: 3306
+      ToPort: 3306
+      SourceSecurityGroupId: !Ref CfEc2TestSecurityGroup
+
+  TestNetWorkInterface:
+    Type: AWS::EC2::NetworkInterface
+    Properties:
+      SubnetId: 
+        !ImportValue pubsub1a
+      GroupSet: 
+        - !Ref CfEc2TestSecurityGroup
+  #IAMロール
+  EC2Role:
+    Type: "AWS::IAM::Role"
+    Properties:
+      RoleName: "EC2Role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service: "ec2.amazonaws.com"
+            Action: "sts:AssumeRole"
+      Policies:
+        - PolicyName: "S3FullAccessPolicy"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: "Allow"
+                Action: "s3:*"
+                Resource: "*"
+      
+        - PolicyName: MyPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - cloudformation:DescribeStacks
+                Resource: "*"
+  #ec2インスタンス
+  CfTestEC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      KeyName: lecture13 
+      ImageId: !Ref OS
+      InstanceType: t2.micro
+      IamInstanceProfile: !Ref iamInstanceProfile
+      NetworkInterfaces:
+        - DeviceIndex: "0"
+          NetworkInterfaceId:
+            !Ref TestNetWorkInterface
+      DisableApiTermination: false
+      Monitoring: false
+      Tags:
+        - Key: Name
+          Value: CfTestEC2Instance
+
+  iamInstanceProfile: 
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: /
+      Roles:
+        - !Ref EC2Role
+    
+     
+      
+  #ロードバランサー
+  TestALB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Type: "application"
+      Scheme: "internet-facing"
+      Name: TestALB
+      Tags:
+        - Key: Name
+          Value: !Sub ${NameBase}-alb
+      IpAddressType: ipv4
+      Subnets: 
+        - !ImportValue pubsub1a
+        - !ImportValue pubsub1c
+      SecurityGroups: 
+        - !Ref CfEc2TestSecurityGroup
+  #ターゲットグループ
+  CfTestTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub ${NameBase}-test-tg
+      Tags:
+        - Key: Name
+          Value: !Sub ${NameBase}-test-tg
+      Port: 80
+      Protocol: HTTP
+      Matcher:
+        HttpCode: '200'
+      VpcId: !ImportValue VPC1
+      TargetType: instance
+      Targets:
+        - Id: !Ref CfTestEC2Instance 
+  #ターゲットリスナー 
+  ListenerHTTP:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref CfTestTargetGroup
+      LoadBalancerArn: !Ref TestALB
+      Port: 80
+      Protocol: HTTP  
+
+  
+  TestRDSSubnetGroup:
+    Type: "AWS::RDS::DBSubnetGroup"
+    Properties:
+      DBSubnetGroupDescription: "dedicated to ut-rds"
+      DBSubnetGroupName: TestRDSSubnetGroup
+      SubnetIds: 
+        - Fn::ImportValue: 
+            !Sub "${NameBase}-privateSubnet2a"
+        - Fn::ImportValue: 
+            !Sub "${NameBase}-privateSubnet2c"
+      Tags: 
+        - Key: Name
+          Value: !Sub ${NameBase}-dbsubnet
+
+  #シークレットマネージャー
+  RDSSecret:
+    Type: "AWS::SecretsManager::Secret"
+    Properties:
+      Name: "MyRDSSecret"
+      Description: "RDS password for my RDS instance"
+      GenerateSecretString:
+        SecretStringTemplate: '{"username": "admin"}'
+        GenerateStringKey: "password"
+        PasswordLength: 16
+        ExcludeCharacters: '"@/\}{~!`'
+
+  #rdsインスタンス
+  RDSInstance:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBInstanceIdentifier: test-rds
+      DBInstanceClass: db.t3.micro
+      Port: 3306
+      Engine: mysql
+      EngineVersion: 8.0.34
+      MasterUsername: admin
+      MasterUserPassword: !Sub '{{resolve:secretsmanager:${RDSSecret}:SecretString:password}}'
+      DBName: CFtestRDS
+      BackupRetentionPeriod: 0
+      MultiAZ: false
+      PubliclyAccessible: false
+      StorageType: gp2
+      AllocatedStorage: 20
+      StorageEncrypted: true
+      CopyTagsToSnapshot: false
+      DeleteAutomatedBackups: true
+      DBSubnetGroupName: !Ref TestRDSSubnetGroup
+      VPCSecurityGroups: 
+      - !Ref CfRDSTestSecurityGroup
+      Tags: 
+        - 
+          Key: Name
+          Value: !Sub ${NameBase}-RDS
+
+Outputs:
+  CfTestEC2Instance:
+    Value: !Ref CfTestEC2Instance
+    Export: 
+      Name: !Sub ${NameBase}-CfTestEC2Instance
+
+  EC2PublicIP:
+    Value: !GetAtt CfTestEC2Instance.PublicIp
+    Description: Public IP of EC2 instance
+    Export:
+      Name: EC2-PublicIP
+  
+  RDSSecret:
+    Description: "RDS password"
+    Value: !Sub '{{resolve:secretsmanager:${RDSSecret}:SecretString:password}}'
+ 
+  RDSInstanceEndpoint:
+    Description: "The connection endpoint"
+    Value: !GetAtt RDSInstance.Endpoint.Address
+   
+  ALBEndpoint:
+    Description: "The DNS name of the ALB"
+    Value: !GetAtt TestALB.DNSName
+
+  ALBArn:
+    Description: "The ARN of the ALB "  
+    Value: !Ref TestALB
+    Export:
+      Name: "ALBArnExport"
+
+  EC2RoleName:
+    Value: !Ref EC2Role
+    Export:
+      Name: EC2Role
+  
+  EC2RoleArn:
+    Value: !GetAtt EC2Role.Arn
+    Export:
+      Name: EC2RoleArn

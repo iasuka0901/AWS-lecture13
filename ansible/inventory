@@ -1,0 +1,2 @@
+[servers]
+myserver ansible_host=EC2PublicIP ansible_user=ec2-user

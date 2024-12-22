@@ -1,31 +1,149 @@
-# Use the latest 2.1 version of CircleCI pipeline process engine.
-# See: https://circleci.com/docs/configuration-reference
+# ----------------------------------------------------------
+# version: 2.1: CircleCIの設定ファイルのバージョンを指定
+# aws-cli: AWS CLI関連の操作を簡単にするためのOrb。
+# aws-cloudformation: CloudFormationを簡単に扱うためのOrb。
+# ansible-playbook: Ansibleプレイブックを簡単に実行するためのOrb。
+# ----------------------------------------------------------
 version: 2.1
+orbs:
+  aws-cli: circleci/aws-cli@4.1.3
+  aws-cloudformation: orbss/aws-cloudformation@0.1.6
+  ansible-playbook: orbss/ansible-playbook@0.0.5 
 
-# Define a job to be invoked later in a workflow.
-# See: https://circleci.com/docs/jobs-steps/#jobs-overview & https://circleci.com/docs/configuration-reference/#jobs
+# cfn-lintジョブを定義
+# GitHubリポジトリの内容をチェックアウト
+# pip（Pythonのパッケージ管理ツール）を最新バージョンにアップデート
+# cfn-lint（CloudFormationテンプレートの構文を検証するツール）をインストール
+# cfn-lintを使ってCloudFormationテンプレート（cloudformationフォルダ内のすべての.ymlファイル）を検証
 jobs:
-  say-hello:
-    # Specify the execution environment. You can specify an image from Docker Hub or use one of our convenience images from CircleCI's Developer Hub.
-    # See: https://circleci.com/docs/executor-intro/ & https://circleci.com/docs/configuration-reference/#executor-job
+  cfn-lint:
     docker:
-      # Specify the version you desire here
-      # See: https://circleci.com/developer/images/image/cimg/base
-      - image: cimg/base:current
-
-    # Add steps to the job
-    # See: https://circleci.com/docs/jobs-steps/#steps-overview & https://circleci.com/docs/configuration-reference/#steps
+      - image: cimg/python:3.11.0 
     steps:
-      # Checkout the code as the first step.
       - checkout
+      - run: python --version
+      - run: pip install --upgrade pip
+      - run: pip --version
+      - run: pip install cfn-lint
       - run:
-          name: "Say hello"
-          command: "echo Hello, World!"
+          name: run cfn-lint
+          command: |
+            cfn-lint -i W3002 -t cloudformation/*.yml
 
-# Orchestrate jobs using workflows
-# See: https://circleci.com/docs/workflows/ & https://circleci.com/docs/configuration-reference/#workflows
+# ジョブ定義: execute-cloudformation
+# AWS CLIのセットアップを行い、環境変数に設定されたキー情報（AWS_ACCESS_KEY_IDなど）を使用
+# CloudFormationテンプレート（VPC.yml）をデプロイし、スタック名としてcircleci-test-VPCを指定
+# --capabilities CAPABILITY_NAMED_IAM: IAMリソースの作成を許可するオプション
+  execute-cloudformation:
+    executor: aws-cli/default
+    steps:
+      - checkout
+      - aws-cli/setup:
+          aws_access_key_id: AWS_ACCESS_KEY_ID
+          aws_secret_access_key: AWS_SECRET_ACCESS_KEY
+          region: AWS_DEFAULT_REGION
+      - run:
+          name: cloudformation deploy
+          command: |
+            set -x 
+            aws cloudformation deploy --template-file cloudformation/VPC.yml --stack-name circleci-test-VPC
+            aws cloudformation deploy --template-file cloudformation/EC2-RDS.yml --stack-name circleci-test-EC2-RDS --capabilities CAPABILITY_NAMED_IAM
+            aws cloudformation deploy --template-file cloudformation/S3.yml --stack-name circleci-test-S3 --capabilities CAPABILITY_NAMED_IAM
+            #aws cloudformation deploy --template-file cloudformation/IPSet.yml --stack-name circleci-test-IPset
+            
+      - run:
+          name: 環境変数の設定
+          command: |
+            # Define variables
+            # スタックの名前とシクレットマネージャーの名前を設定
+            STACK_NAME="circleci-test-EC2-RDS" 
+            STACK_NAME2="circleci-test-S3"
+            SECRET_NAME="MyRDSSecret"
+            REGION="ap-northeast-1"
+            EC2PublicIP=$(aws cloudformation describe-stacks --stack-name $STACK_NAME --query "Stacks[0].Outputs[?OutputKey=='EC2PublicIP'].OutputValue" --output text --region $REGION)
+            echo "export EC2PublicIP=$EC2PublicIP" >> .env_var
+            # RDSのエンドポイントを環境変数に設定
+            RDS_ENDPOINT=$(aws cloudformation describe-stacks --stack-name $STACK_NAME --query "Stacks[0].Outputs[?OutputKey=='RDSInstanceEndpoint'].OutputValue" --output text --region $REGION)
+            #出力した変数を環境変数に設定
+            echo "export RDS_ENDPOINT=$(printf '%q' $RDS_ENDPOINT)" >> .env_var
+
+            RDS_PASSWORD=$(aws secretsmanager get-secret-value --secret-id $SECRET_NAME --query "SecretString" --output text --region $REGION | jq -r '.password')
+            echo "export RDS_PASSWORD=$(printf '%q' $RDS_PASSWORD)" >> .env_var
+            # ロードバランサーのDNSを環境変数に出力して設定
+            DNS_NAME=$(aws cloudformation describe-stacks --stack-name $STACK_NAME --query "Stacks[0].Outputs[?OutputKey=='ALBEndpoint'].OutputValue" --output text --region $REGION)
+            echo "export DNS_NAME=$DNS_NAME" >> .env_var
+            # S3を出力して環境変数に設定
+            S3_NAME=$(aws cloudformation describe-stacks --stack-name $STACK_NAME2 --query "Stacks[0].Outputs[?OutputKey=='lecture13appbucket'].OutputValue" --output text --region $REGION)
+            echo "export S3_NAME=$S3_NAME" >> .env_var
+
+      - run:
+          name: check environment variables
+          command: |
+            source .env_var
+            echo "EC2PublicIP: $EC2PublicIP"
+            echo "RDS_ENDPOINT: $RDS_ENDPOINT"
+            echo "RDS_PASSWORD: $RDS_PASSWORD"
+            echo "DNS_NAME: $DNS_NAME"
+            echo "S3_NAME: $S3_NAME"
+          no_output_timeout: 30m
+      - persist_to_workspace:
+          root: .
+          paths:
+            - .env_var
+  execute-ansible:
+    executor: ansible-playbook/default
+    docker:
+      - image: cimg/python:3.10
+    steps:
+      - checkout
+      - attach_workspace:
+          at: .
+      - run:
+          name: python -m pip install --upgrade pip
+          command: python -m pip install --force-reinstall --upgrade pip
+      - add_ssh_keys:
+          fingerprints:
+          - "SHA256:5IfPkhEeUMhJcsmiPYZHeDKL4G5LmwYz6MAx+2wACX0"
+      - run: 
+          name: install ansible
+          command: pip install ansible==2.10.7
+      - run:
+          name: Install community.mysql collection
+          command: |
+            ansible-galaxy collection install community.mysql -vvv
+      - run:
+          name: Use Environment Variable
+          command: |
+            source .env_var
+            echo $RDS_ENDPOINT
+            echo $RDS_PASSWORD
+            echo $EC2PublicIP
+            echo $DNS_NAME
+            echo $S3_NAME
+      - run:
+          name: Replacing environment variables in Sed
+          command: |
+            source .env_var
+            echo $EC2PublicIP
+            sed -i "s/EC2PublicIP/${EC2PublicIP}/g" ansible/inventory
+            cat ansible/inventory
+            sed -i "s/RDS_ENDPOINT/${RDS_ENDPOINT}/g" ansible/playbook.yml
+            sed -i "s/RDS_PASSWORD/${RDS_PASSWORD}/g" ansible/playbook.yml
+            sed -i "s/DNS_NAME/${DNS_NAME}/g" ansible/playbook.yml
+            sed -i "s/S3_NAME/${S3_NAME}/g" ansible/playbook.yml
+            cat ansible/playbook.yml
+          no_output_timeout: 30m
+      - run:
+          name: Run Ansible Playbook with increased timeout
+          no_output_timeout: 60m  
+          command: |
+            ansible-playbook ansible/playbook.yml -u ec2-user -i ansible/inventory -e "RDS_PASSWORD=$RDS_PASSWORD" --private-key ~/AWS-access/lecture13.pem
+
 workflows:
-  say-hello-workflow: # This is the name of the workflow, feel free to change it to better match your workflow.
-    # Inside the workflow, you define the jobs you want to run.
+  raisetech:
     jobs:
-      - say-hello
+      - cfn-lint
+      - execute-cloudformation
+      - execute-ansible:
+          requires:
+            - execute-cloudformation
