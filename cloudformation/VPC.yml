@@ -15,6 +15,7 @@ Resources:
      Properties:
        CidrBlock: 10.0.0.0/16
        EnableDnsSupport: true
+       EnableDnsHostnames: true  # 修正点
        Tags:
          - Key: Name
            Value: !Sub vpc-${NameBase}
