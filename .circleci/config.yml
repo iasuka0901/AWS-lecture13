@@ -60,8 +60,8 @@ jobs:
             STACK_NAME2="circleci-test-S3"
             SECRET_NAME="MyRDSSecret"
             REGION="ap-northeast-1"
-            EC2PublicIP=$(aws cloudformation describe-stacks --stack-name $STACK_NAME --query "Stacks[0].Outputs[?OutputKey=='EC2PublicIP'].OutputValue" --output text --region $REGION --no-cli-pager)
-            echo "export EC2PublicIP=$EC2PublicIP" >> .env_var
+            ElasticIP=$(aws cloudformation describe-stacks --stack-name $STACK_NAME --query "Stacks[0].Outputs[?OutputKey=='ElasticIP'].OutputValue" --output text --region $REGION --no-cli-pager)
+            echo "export ElasticIP=$ElasticIP" >> .env_var
             # RDSのエンドポイントを環境変数に設定
             RDS_ENDPOINT=$(aws cloudformation describe-stacks --stack-name $STACK_NAME --query "Stacks[0].Outputs[?OutputKey=='RDSInstanceEndpoint'].OutputValue" --output text --region $REGION --no-cli-pager)
             #出力した変数を環境変数に設定
@@ -80,7 +80,7 @@ jobs:
           name: check environment variables
           command: |
             source .env_var
-            echo "EC2PublicIP: $EC2PublicIP"
+            echo "ElasticIP: $ElasticIP"
             echo "RDS_ENDPOINT: $RDS_ENDPOINT"
             echo "RDS_PASSWORD: $RDS_PASSWORD"
             echo "DNS_NAME: $DNS_NAME"
@@ -117,15 +117,15 @@ jobs:
             source .env_var
             echo $RDS_ENDPOINT
             echo $RDS_PASSWORD
-            echo $EC2PublicIP
+            echo $ElasticIP
             echo $DNS_NAME
             echo $S3_NAME
       - run:
           name: Replacing environment variables in Sed
           command: |
             source .env_var
-            echo $EC2PublicIP
-            sed -i "s/EC2PublicIP/${EC2PublicIP}/g" ansible/inventory
+            echo $ElasticIP
+            sed -i "s/ElasticIP/${ElasticIP}/g" ansible/inventory
             cat ansible/inventory
             sed -i "s/RDS_ENDPOINT/${RDS_ENDPOINT}/g" ansible/playbook.yml
             sed -i "s/RDS_PASSWORD/${RDS_PASSWORD}/g" ansible/playbook.yml
@@ -163,7 +163,7 @@ jobs:
             source .env_var
             mkdir -p ~/.ssh
             echo "Host target" >> ~/.ssh/config
-            echo "HostName ${EC2PublicIP}" >> ~/.ssh/config
+            echo "HostName $ElasticIP}" >> ~/.ssh/config
             echo "User ec2-user" >> ~/.ssh/config
 
       - run:
