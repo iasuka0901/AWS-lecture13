@@ -243,7 +243,7 @@ Outputs:
     Description: "The Elastic IP address"
     Value: !Ref TestElasticIP
     Export:
-      Name: !Sub "ElasticIP"
+      Name: "ElasticIP"
   
   RDSSecret:
     Description: "RDS password"
