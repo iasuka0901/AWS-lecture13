@@ -21,12 +21,12 @@ namespace :spec do
     desc "Run serverspec tests to #{original_target}"
     RSpec::Core::RakeTask.new(target.to_sym) do |t|
       # 固定IPアドレスを環境変数として指定
-      ENV['TARGET_HOST'] = '54.249.34.111'
+      ENV['TARGET_HOST'] = '52.197.254.56'
 
       # インベントリファイルを作成して、IPを指定
       File.open('inventory', 'w') do |file|
         file.puts "[myserver]"
-        file.puts "myserver ansible_host=54.249.34.111 ansible_user=ec2-user"
+        file.puts "myserver ansible_host=52.197.254.56 ansible_user=ec2-user"
       end
 
       t.pattern = "spec/#{original_target}/*_spec.rb"
