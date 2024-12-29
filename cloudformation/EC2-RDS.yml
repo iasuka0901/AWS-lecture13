@@ -122,7 +122,7 @@ Resources:
         - !Ref EC2Role
 
   # Elastic IPの作成
-  TestElasticIP:
+  ElasticIP:
     Type: AWS::EC2::EIP
     Properties:
       Domain: vpc
@@ -131,7 +131,7 @@ Resources:
   EIPAssociation:
     Type: AWS::EC2::EIPAssociation
     Properties:
-      AllocationId: !GetAtt TestElasticIP.AllocationId
+      AllocationId: !GetAtt ElasticIP.AllocationId
       NetworkInterfaceId: !Ref TestNetWorkInterface
       
   #ロードバランサー
@@ -241,7 +241,7 @@ Outputs:
   
   ElasticIP:
     Description: "The Elastic IP address"
-    Value: !Ref TestElasticIP
+    Value: !Ref ElasticIP
     Export:
       Name: "ElasticIP"
   
