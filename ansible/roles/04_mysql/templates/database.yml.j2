@@ -14,8 +14,8 @@ default: &default
   encoding: utf8mb4
   pool: <%= ENV.fetch("RAILS_MAX_THREADS") { 5 } %>
   username: admin
-  password: <%= ENV["RDS_PASSWORD"] %>
-  host: <%= ENV["RDS_ENDPOINT"] %>
+  password: "{{ RDS_PASSWORD }}"
+  host: "{{ EndpointAddress }}"
 
 development:
   <<: *default
