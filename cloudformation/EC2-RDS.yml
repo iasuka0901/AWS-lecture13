@@ -247,7 +247,7 @@ Outputs:
   
   RDSSecret:
     Description: "RDS password"
-    Value: !Sub '{{resolve:secretsmanager:MyRDSSecret:SecretString:password}}'
+    Value: !Sub '{{resolve:secretsmanager:${RDSSecret}:SecretString:password}}'
  
   RDSInstanceEndpoint:
     Description: "The connection endpoint"
