@@ -75,6 +75,8 @@ jobs:
             # S3を出力して環境変数に設定
             S3_NAME=$(aws cloudformation describe-stacks --stack-name $STACK_NAME2 --query "Stacks[0].Outputs[?OutputKey=='lecture13appbucket'].OutputValue" --output text --region $REGION --no-cli-pager)
             echo "export S3_NAME=$S3_NAME" >> .env_var
+            password=$(aws secretsmanager get-secret-value --secret-id MyRDSSecret --region ap-northeast-1 --query 'SecretString' --output text | jq -r .password)
+            echo $password > /tmp/RDS_PASSWORD.txt
 
       - run:
           name: check environment variables
@@ -82,7 +84,7 @@ jobs:
             source .env_var
             echo "ElasticIP: $ElasticIP"
             echo "RDS_ENDPOINT: $RDS_ENDPOINT"
-            echo "RDS_PASSWORD: $RDS_PASSWORD"
+            echo "export RDS_PASSWORD=$(cat /tmp/RDS_PASSWORD.txt)" >> $BASH_ENV
             echo "DNS_NAME: $DNS_NAME"
             echo "S3_NAME: $S3_NAME"
           no_output_timeout: 30m
@@ -165,6 +167,8 @@ jobs:
             echo "Host target" >> ~/.ssh/config
             echo "HostName $ElasticIP" >> ~/.ssh/config
             echo "User ec2-user" >> ~/.ssh/config
+            AWS_DB_PW=$(cat /tmp/AWS_DB_PW.txt)
+            echo "export AWS_DB_PW=${AWS_DB_PW}" >> $BASH_ENV
 
       - run:
           name: execution for serverspec the test
