@@ -14,7 +14,7 @@ orbs:
 # GitHubリポジトリの内容をチェックアウト
 # pip（Pythonのパッケージ管理ツール）最新バージョンにアップデート
 # cfn-lint（CloudFormationテンプレートの構文を検証するツール）をインストール
-# cfn-lintを使ってCloudFormationテンプレート（cloudformationフォルダ内のすべての.ymlファイル）を検証
+# cfn-lintを使ってCloudFormationテンプレート（cloudformationフォルダ内のすべての.ymlファイル）検証
 jobs:
   cfn-lint:
     docker:
